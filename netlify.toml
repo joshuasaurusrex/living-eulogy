@@ -1,0 +1,11 @@
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# Handle client-side routing (SPA)
+# Functions are automatically excluded from this rule
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
