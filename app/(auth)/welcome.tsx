@@ -4,19 +4,22 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
-  Dimensions,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { TouchableOpacity } from 'react-native';
 import { brand } from '@/constants/Colors';
 import { spacing, radius, shadows } from '@/constants/Theme';
 
-const { height } = Dimensions.get('window');
-
 export default function WelcomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
         {/* Hero Section */}
         <View style={styles.hero}>
           <Text style={styles.brandName}>Living Eulogy</Text>
@@ -68,7 +71,8 @@ export default function WelcomeScreen() {
         <Text style={styles.footer}>
           Don't wait until it's too late.
         </Text>
-      </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -78,12 +82,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: brand.backgroundAlt,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   content: {
     flex: 1,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
+    paddingTop: spacing.xl,
+    paddingBottom: Platform.OS === 'web' ? 80 : spacing.xl,
     justifyContent: 'space-between',
-    minHeight: height * 0.9,
+    minHeight: '100%',
   },
   hero: {
     alignItems: 'center',

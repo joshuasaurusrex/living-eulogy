@@ -26,9 +26,9 @@ export default function TabLayout() {
           backgroundColor: isDark ? '#1a1a1a' : brand.background,
           borderTopColor: isDark ? '#333' : brand.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'web' ? 80 : Platform.OS === 'ios' ? 85 : 60,
-          paddingTop: 8,
-          paddingBottom: Platform.OS === 'web' ? 24 : Platform.OS === 'ios' ? 28 : 8,
+          height: Platform.OS === 'web' ? 100 : Platform.OS === 'ios' ? 85 : 60,
+          paddingTop: 10,
+          paddingBottom: Platform.OS === 'web' ? 44 : Platform.OS === 'ios' ? 28 : 8,
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter_500Medium',
