@@ -1,78 +1,122 @@
 import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Tabs, router, usePathname } from 'expo-router';
+import { Home, Inbox, BookHeart, User, Plus } from 'lucide-react-native';
 
 import { brand } from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
+
+function TabBarIcon({
+  Icon,
+  color,
+  size = 24
+}: {
+  Icon: typeof Home;
   color: string;
+  size?: number;
 }) {
-  return <FontAwesome size={22} style={{ marginBottom: -3 }} {...props} />;
+  return <Icon size={size} color={color} strokeWidth={2} />;
+}
+
+function FloatingActionButton() {
+  return (
+    <TouchableOpacity
+      style={styles.fab}
+      onPress={() => router.push('/(tabs)/write')}
+      activeOpacity={0.8}
+    >
+      <Plus size={28} color="#fff" strokeWidth={2.5} />
+    </TouchableOpacity>
+  );
 }
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const pathname = usePathname();
   const isDark = colorScheme === 'dark';
+  const isWriteScreen = pathname === '/write' || pathname === '/(tabs)/write';
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: brand.primary,
-        tabBarInactiveTintColor: brand.textMuted,
-        tabBarStyle: {
-          backgroundColor: isDark ? '#1a1a1a' : brand.background,
-          borderTopColor: isDark ? '#333' : brand.border,
-          borderTopWidth: 1,
-          height: Platform.OS === 'web' ? 100 : Platform.OS === 'ios' ? 85 : 60,
-          paddingTop: 10,
-          paddingBottom: Platform.OS === 'web' ? 44 : Platform.OS === 'ios' ? 28 : 8,
-        },
-        tabBarLabelStyle: {
-          fontFamily: 'Inter_500Medium',
-          fontSize: 11,
-        },
-        headerShown: false,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Discover',
-          tabBarIcon: ({ color }) => <TabBarIcon name="globe" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="write"
-        options={{
-          title: 'Write',
-          tabBarIcon: ({ color }) => <TabBarIcon name="pencil" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="my-eulogies"
-        options={{
-          title: 'My Eulogies',
-          tabBarIcon: ({ color }) => <TabBarIcon name="heart" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="for-me"
-        options={{
-          title: 'For Me',
-          tabBarIcon: ({ color }) => <TabBarIcon name="gift" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
-        }}
-      />
-      {/* Hide the old two.tsx from tabs */}
-      <Tabs.Screen name="two" options={{ href: null }} />
-    </Tabs>
+    <View style={styles.container}>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: brand.primary,
+          tabBarInactiveTintColor: brand.textMuted,
+          tabBarShowLabel: false,
+          tabBarStyle: {
+            backgroundColor: isDark ? '#1a1a1a' : brand.background,
+            borderTopColor: isDark ? '#333' : brand.border,
+            borderTopWidth: 1,
+            height: Platform.OS === 'ios' ? 85 : 56,
+            paddingTop: 8,
+            paddingBottom: Platform.OS === 'ios' ? 28 : 4,
+          },
+          headerShown: false,
+        }}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={Home} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="for-me"
+          options={{
+            title: 'Inbox',
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={Inbox} color={color} />,
+          }}
+        />
+        {/* Spacer for FAB */}
+        <Tabs.Screen
+          name="write"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="my-eulogies"
+          options={{
+            title: 'Library',
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={BookHeart} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={User} color={color} />,
+          }}
+        />
+        {/* Hide the old two.tsx from tabs */}
+        <Tabs.Screen name="two" options={{ href: null }} />
+      </Tabs>
+      {!isWriteScreen && <FloatingActionButton />}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 50 : 28,
+    left: '50%',
+    marginLeft: -28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: brand.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: brand.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 100,
+  },
+});

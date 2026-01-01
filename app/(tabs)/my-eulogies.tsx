@@ -8,13 +8,55 @@ import {
   TouchableOpacity,
   Alert,
   SafeAreaView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import { Lock, Users, Globe, Link2, Trash2 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { brand } from '@/constants/Colors';
-import { spacing, radius, shadows } from '@/constants/Theme';
+import { spacing, radius } from '@/constants/Theme';
+import { Avatar } from '@/components/ui/Avatar';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useToast } from '@/components/ui/Toast';
+import { getBaseUrl, formatDate } from '@/lib/utils';
+
+const Separator = () => <View style={styles.separator} />;
+
+const VisibilityIcon = ({ visibility }: { visibility: string }) => {
+  const props = { size: 14, strokeWidth: 2 };
+  switch (visibility) {
+    case 'private':
+      return <Lock {...props} color={brand.textMuted} />;
+    case 'friends':
+      return <Users {...props} color={brand.textMuted} />;
+    case 'public':
+      return <Globe {...props} color={brand.textMuted} />;
+    default:
+      return <Lock {...props} color={brand.textMuted} />;
+  }
+};
+
+const EmptyLibrary = ({ onWritePress }: { onWritePress: () => void }) => (
+  <View style={styles.emptyContainer}>
+    <EmptyState
+      type="library"
+      title="No eulogies yet"
+      description="Start writing to share your appreciation with someone special"
+    />
+    <TouchableOpacity
+      style={styles.writeButton}
+      onPress={onWritePress}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel="Write your first eulogy"
+    >
+      <Text style={styles.writeButtonText}>Write Your First</Text>
+    </TouchableOpacity>
+  </View>
+);
 
 type Eulogy = {
   id: string;
@@ -27,41 +69,51 @@ type Eulogy = {
 
 export default function MyEulogiesScreen() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [eulogies, setEulogies] = useState<Eulogy[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const getBaseUrl = () => {
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
-    }
-    return 'https://livingeulogy.io';
-  };
-
-  const fetchMyEulogies = async () => {
+  const fetchEulogies = useCallback(async (isMounted?: { current: boolean }) => {
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from('eulogies')
-      .select('*')
-      .eq('author_id', user.id)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('eulogies')
+        .select('*')
+        .eq('author_id', user.id)
+        .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setEulogies(data);
+      if (isMounted && !isMounted.current) return;
+
+      if (error) {
+        console.error('Failed to fetch eulogies:', error);
+        setEulogies([]);
+      } else {
+        setEulogies(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch eulogies:', err);
+      if (!isMounted || isMounted.current) setEulogies([]);
+    } finally {
+      if (!isMounted || isMounted.current) setLoading(false);
     }
-    setLoading(false);
-  };
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchMyEulogies();
-    }, [user])
+      const isMounted = { current: true };
+      fetchEulogies(isMounted);
+      return () => {
+        isMounted.current = false;
+      };
+    }, [fetchEulogies])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchMyEulogies();
+    await fetchEulogies();
     setRefreshing(false);
   };
 
@@ -69,48 +121,47 @@ export default function MyEulogiesScreen() {
     const baseUrl = getBaseUrl();
     const link = `${baseUrl}/view/${eulogy.share_token}`;
 
-    await Clipboard.setStringAsync(link);
-
-    Alert.alert(
-      'Link Copied!',
-      `Share this link with ${eulogy.recipient_name}:\n\n${link}`,
-      [{ text: 'Done' }]
-    );
+    try {
+      await Clipboard.setStringAsync(link);
+      showToast('Link copied to clipboard');
+    } catch {
+      showToast('Failed to copy link', 'error');
+    }
   };
 
   const handleDelete = (eulogy: Eulogy) => {
-    Alert.alert(
-      'Delete Eulogy',
-      `Are you sure you want to delete your eulogy for ${eulogy.recipient_name}? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase
-              .from('eulogies')
-              .delete()
-              .eq('id', eulogy.id);
-            if (!error) {
-              setEulogies(eulogies.filter((e) => e.id !== eulogy.id));
-            }
-          },
-        },
-      ]
-    );
-  };
+    // Prevent double-tap while deleting
+    if (deletingId) return;
 
-  const getVisibilityIcon = (visibility: string) => {
-    switch (visibility) {
-      case 'private':
-        return '🔒';
-      case 'friends':
-        return '👥';
-      case 'public':
-        return '🌍';
-      default:
-        return '🔒';
+    const doDelete = async () => {
+      setDeletingId(eulogy.id);
+      const { error } = await supabase
+        .from('eulogies')
+        .delete()
+        .eq('id', eulogy.id);
+
+      if (error) {
+        showToast('Failed to delete. Please try again.', 'error');
+      } else {
+        setEulogies(prev => prev.filter((e) => e.id !== eulogy.id));
+        showToast('Eulogy deleted');
+      }
+      setDeletingId(null);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete your eulogy for ${eulogy.recipient_name}? This cannot be undone.`)) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Eulogy',
+        `Are you sure you want to delete your eulogy for ${eulogy.recipient_name}? This cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: doDelete },
+        ]
+      );
     }
   };
 
@@ -127,65 +178,62 @@ export default function MyEulogiesScreen() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
   const renderEulogy = ({ item }: { item: Eulogy }) => (
     <View style={styles.card}>
+      {/* Card Header */}
       <View style={styles.cardHeader}>
-        <Text style={styles.recipient}>For {item.recipient_name}</Text>
-        <View style={styles.badge}>
-          <Text style={styles.badgeIcon}>{getVisibilityIcon(item.visibility)}</Text>
-          <Text style={styles.badgeText}>{getVisibilityLabel(item.visibility)}</Text>
+        <Avatar name={item.recipient_name} size="md" />
+        <View style={styles.headerText}>
+          <Text style={styles.recipientName}>For {item.recipient_name}</Text>
+          <View style={styles.metaRow}>
+            <VisibilityIcon visibility={item.visibility} />
+            <Text style={styles.metaText}>{getVisibilityLabel(item.visibility)}</Text>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.metaText}>{formatDate(item.created_at)}</Text>
+          </View>
         </View>
       </View>
+
+      {/* Content */}
       <Text style={styles.content} numberOfLines={3}>
         {item.content}
       </Text>
-      <Text style={styles.date}>{formatDate(item.created_at)}</Text>
+
+      {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => handleShare(item)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Copy share link for eulogy to ${item.recipient_name}`}
         >
-          <Text style={styles.actionIcon}>📋</Text>
+          <Link2 size={18} color={brand.primary} strokeWidth={2} />
           <Text style={styles.actionText}>Copy Link</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
+          style={[styles.actionButton, styles.deleteAction, deletingId === item.id && styles.actionDisabled]}
           onPress={() => handleDelete(item)}
           activeOpacity={0.7}
+          disabled={deletingId === item.id}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete eulogy for ${item.recipient_name}`}
+          accessibilityState={{ disabled: deletingId === item.id }}
         >
-          <Text style={styles.actionIcon}>🗑️</Text>
-          <Text style={styles.deleteText}>Delete</Text>
+          {deletingId === item.id ? (
+            <ActivityIndicator size="small" color={brand.error} />
+          ) : (
+            <Trash2 size={18} color={brand.error} strokeWidth={2} />
+          )}
+          <Text style={styles.deleteText}>{deletingId === item.id ? 'Deleting...' : 'Delete'}</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  const EmptyState = () => (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyIcon}>✍️</Text>
-      <Text style={styles.emptyTitle}>No eulogies yet</Text>
-      <Text style={styles.emptySubtitle}>
-        Start writing to share your appreciation{'\n'}with someone special
-      </Text>
-      <TouchableOpacity
-        style={styles.writeButton}
-        onPress={() => router.push('/(tabs)/write')}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.writeButtonText}>Write Your First Eulogy</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const handleWritePress = useCallback(() => {
+    router.push('/(tabs)/write');
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -201,18 +249,19 @@ export default function MyEulogiesScreen() {
             tintColor={brand.primary}
           />
         }
-        ListEmptyComponent={!loading ? EmptyState : null}
+        ListEmptyComponent={!loading ? <EmptyLibrary onWritePress={handleWritePress} /> : null}
         ListHeaderComponent={
-          eulogies.length > 0 ? (
-            <View style={styles.headerContainer}>
-              <Text style={styles.header}>My Eulogies</Text>
+          <View style={styles.headerContainer}>
+            <Text style={styles.header}>My Eulogies</Text>
+            {eulogies.length > 0 && (
               <Text style={styles.headerSubtitle}>
-                {eulogies.length} {eulogies.length === 1 ? 'eulogy' : 'eulogies'} written
+                {eulogies.length} {eulogies.length === 1 ? 'eulogy' : 'eulogies'}
               </Text>
-            </View>
-          ) : null
+            )}
+          </View>
         }
         showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={Separator}
       />
     </SafeAreaView>
   );
@@ -221,101 +270,96 @@ export default function MyEulogiesScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: brand.backgroundAlt,
+    backgroundColor: brand.background,
   },
   list: {
-    padding: spacing.lg,
     flexGrow: 1,
   },
   headerContainer: {
-    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: brand.border,
   },
   header: {
-    fontFamily: 'PlayfairDisplay_700Bold',
-    fontSize: 28,
+    fontFamily: 'Inter_700Bold',
+    fontSize: 24,
     color: brand.text,
-    marginBottom: spacing.xs,
   },
   headerSubtitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 14,
-    color: brand.textSecondary,
+    color: brand.textMuted,
+    marginTop: 2,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: brand.border,
   },
   card: {
     backgroundColor: brand.background,
-    borderRadius: radius.lg,
     padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...shadows.md,
   },
   cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  recipient: {
-    fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 18,
-    color: brand.primary,
+  headerText: {
+    marginLeft: spacing.md,
     flex: 1,
   },
-  badge: {
+  recipientName: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    color: brand.text,
+  },
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: brand.backgroundAlt,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
+    marginTop: 4,
     gap: 4,
   },
-  badgeIcon: {
-    fontSize: 12,
+  metaText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: brand.textMuted,
   },
-  badgeText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: brand.textSecondary,
+  metaDot: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: brand.textMuted,
+    marginHorizontal: 2,
   },
   content: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 14,
+    fontSize: 15,
     color: brand.text,
     lineHeight: 22,
-    marginBottom: spacing.sm,
-  },
-  date: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: brand.textMuted,
     marginBottom: spacing.md,
   },
   actions: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: brand.borderLight,
-    paddingTop: spacing.md,
+    gap: spacing.md,
+    paddingTop: spacing.sm,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: brand.backgroundAlt,
+    backgroundColor: '#EEF2FF',
     paddingVertical: spacing.sm + 2,
     borderRadius: radius.md,
     gap: spacing.xs,
   },
-  actionIcon: {
-    fontSize: 14,
-  },
   actionText: {
     fontFamily: 'Inter_600SemiBold',
-    color: brand.accent,
+    color: brand.primary,
     fontSize: 14,
   },
-  deleteButton: {
+  deleteAction: {
     backgroundColor: '#FEF2F2',
   },
   deleteText: {
@@ -323,46 +367,25 @@ const styles = StyleSheet.create({
     color: brand.error,
     fontSize: 14,
   },
-  emptyState: {
+  actionDisabled: {
+    opacity: 0.6,
+  },
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: spacing.xxl * 2,
-    paddingHorizontal: spacing.xl,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: spacing.lg,
-  },
-  emptyTitle: {
-    fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 22,
-    color: brand.text,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 15,
-    color: brand.textSecondary,
-    marginBottom: spacing.xl,
-    textAlign: 'center',
-    lineHeight: 22,
+    paddingVertical: spacing.xxl,
   },
   writeButton: {
     backgroundColor: brand.primary,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    shadowColor: brand.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    borderRadius: radius.full,
+    marginTop: spacing.md,
   },
   writeButtonText: {
     fontFamily: 'Inter_600SemiBold',
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
   },
 });

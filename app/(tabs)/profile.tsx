@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,23 +8,115 @@ import {
   SafeAreaView,
   ScrollView,
   Platform,
+  Linking,
 } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
 import { brand } from '@/constants/Colors';
 import { spacing, radius, shadows } from '@/constants/Theme';
 
+type MenuItemProps = {
+  icon: string;
+  label: string;
+  onPress?: () => void;
+};
+
+const MenuItem = ({ icon, label, onPress }: MenuItemProps) => (
+  <TouchableOpacity
+    style={styles.menuItem}
+    onPress={onPress}
+    activeOpacity={0.7}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+  >
+    <View style={styles.menuItemContent}>
+      <Text style={styles.menuIcon}>{icon}</Text>
+      <Text style={styles.menuText}>{label}</Text>
+    </View>
+    <Text style={styles.menuArrow}>›</Text>
+  </TouchableOpacity>
+);
+
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
+  const [stats, setStats] = useState({ written: 0, received: 0, likes: 0 });
 
-  const handleSignOut = () => {
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      const doFetch = async () => {
+        if (!user) return;
+
+        try {
+          const { count: writtenCount, error: writtenError } = await supabase
+            .from('eulogies')
+            .select('*', { count: 'exact', head: true })
+            .eq('author_id', user.id);
+
+          if (writtenError) throw writtenError;
+
+          const { count: receivedCount, error: receivedError } = await supabase
+            .from('eulogies')
+            .select('*', { count: 'exact', head: true })
+            .eq('recipient_email', user.email);
+
+          if (receivedError) throw receivedError;
+
+          const { data: userEulogies, error: eulogiesError } = await supabase
+            .from('eulogies')
+            .select('id')
+            .eq('author_id', user.id);
+
+          if (eulogiesError) throw eulogiesError;
+
+          let likesCount = 0;
+          if (userEulogies && userEulogies.length > 0) {
+            const eulogyIds = userEulogies.map(e => e.id);
+            const { count, error: likesError } = await supabase
+              .from('likes')
+              .select('*', { count: 'exact', head: true })
+              .in('eulogy_id', eulogyIds);
+
+            if (likesError) throw likesError;
+            likesCount = count || 0;
+          }
+
+          if (isMounted) {
+            setStats({
+              written: writtenCount || 0,
+              received: receivedCount || 0,
+              likes: likesCount,
+            });
+          }
+        } catch (err) {
+          console.error('Failed to fetch profile stats:', err);
+        }
+      };
+
+      doFetch();
+
+      return () => {
+        isMounted = false;
+      };
+    }, [user])
+  );
+
+  const handleSignOut = async () => {
+    const doSignOut = async () => {
+      await signOut();
+      router.replace('/(auth)/welcome');
+    };
+
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to sign out?')) {
-        signOut();
+        doSignOut();
       }
     } else {
       Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: signOut },
+        { text: 'Sign Out', style: 'destructive', onPress: doSignOut },
       ]);
     }
   };
@@ -37,35 +129,17 @@ export default function ProfileScreen() {
     );
   };
 
-  const MenuItem = ({
-    icon,
-    label,
-    onPress,
-    comingSoon = false,
-  }: {
-    icon: string;
-    label: string;
-    onPress?: () => void;
-    comingSoon?: boolean;
-  }) => (
-    <TouchableOpacity
-      style={[styles.menuItem, comingSoon && styles.menuItemDisabled]}
-      onPress={comingSoon ? undefined : onPress}
-      activeOpacity={comingSoon ? 1 : 0.7}
-    >
-      <View style={styles.menuItemContent}>
-        <Text style={styles.menuIcon}>{icon}</Text>
-        <Text style={[styles.menuText, comingSoon && styles.menuTextDisabled]}>
-          {label}
-        </Text>
-      </View>
-      {comingSoon ? (
-        <Text style={styles.comingSoonBadge}>Soon</Text>
-      ) : (
-        <Text style={styles.menuArrow}>›</Text>
-      )}
-    </TouchableOpacity>
-  );
+  const handleContact = () => {
+    Linking.openURL('mailto:hello@livingeulogy.io');
+  };
+
+  const handleTerms = () => {
+    Linking.openURL('https://livingeulogy.io/terms');
+  };
+
+  const handlePrivacy = () => {
+    Linking.openURL('https://livingeulogy.io/privacy');
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -85,41 +159,33 @@ export default function ProfileScreen() {
           <Text style={styles.email}>{user?.email}</Text>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>—</Text>
-            <Text style={styles.statLabel}>Written</Text>
+        {/* Stats - only show if user has any activity */}
+        {(stats.written > 0 || stats.received > 0 || stats.likes > 0) && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{stats.written}</Text>
+              <Text style={styles.statLabel}>Written</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{stats.received}</Text>
+              <Text style={styles.statLabel}>Received</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{stats.likes}</Text>
+              <Text style={styles.statLabel}>Likes</Text>
+            </View>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>—</Text>
-            <Text style={styles.statLabel}>Received</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>—</Text>
-            <Text style={styles.statLabel}>Shared</Text>
-          </View>
-        </View>
-
-        {/* Account Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <View style={styles.menuCard}>
-            <MenuItem icon="✏️" label="Edit Profile" comingSoon />
-            <MenuItem icon="🔔" label="Notifications" comingSoon />
-            <MenuItem icon="🔒" label="Privacy" comingSoon />
-          </View>
-        </View>
+        )}
 
         {/* Support Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support</Text>
           <View style={styles.menuCard}>
-            <MenuItem icon="❓" label="Help & FAQ" comingSoon />
-            <MenuItem icon="💬" label="Contact Us" comingSoon />
-            <MenuItem icon="📜" label="Terms of Service" comingSoon />
+            <MenuItem icon="💬" label="Contact Us" onPress={handleContact} />
+            <MenuItem icon="🔒" label="Privacy Policy" onPress={handlePrivacy} />
+            <MenuItem icon="📜" label="Terms of Service" onPress={handleTerms} />
           </View>
         </View>
 
@@ -137,6 +203,8 @@ export default function ProfileScreen() {
           style={styles.signOutButton}
           onPress={handleSignOut}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
         >
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
@@ -250,9 +318,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: brand.borderLight,
   },
-  menuItemDisabled: {
-    opacity: 0.6,
-  },
   menuItemContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -266,22 +331,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: brand.text,
   },
-  menuTextDisabled: {
-    color: brand.textSecondary,
-  },
   menuArrow: {
     fontFamily: 'Inter_400Regular',
     fontSize: 20,
     color: brand.textMuted,
-  },
-  comingSoonBadge: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    color: brand.textMuted,
-    backgroundColor: brand.backgroundAlt,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
   },
   aboutSection: {
     alignItems: 'center',
@@ -311,13 +364,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     backgroundColor: brand.background,
-    borderWidth: 2,
-    borderColor: brand.error,
     alignItems: 'center',
   },
   signOutText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
-    color: brand.error,
+    color: brand.textSecondary,
   },
 });

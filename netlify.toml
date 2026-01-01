@@ -3,6 +3,11 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Edge function for OG meta tags on shared eulogies
+[[edge_functions]]
+  path = "/view/*"
+  function = "og-meta"
+
 # Handle client-side routing (SPA)
 # Functions are automatically excluded from this rule
 [[redirects]]

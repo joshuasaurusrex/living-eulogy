@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
   SafeAreaView,
   ScrollView,
 } from 'react-native';
 import { Link, router } from 'expo-router';
+import { Check } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth-context';
+import { useToast } from '@/components/ui/Toast';
+import { validateEmail } from '@/lib/utils';
 import { brand } from '@/constants/Colors';
 import { spacing, radius } from '@/constants/Theme';
 
@@ -26,10 +28,28 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const { signUp } = useAuth();
+  const { showToast } = useToast();
 
-  const validateEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
+  const passwordsMatch = useMemo(
+    () => password.length > 0 && confirmPassword.length > 0 && password === confirmPassword,
+    [password, confirmPassword]
+  );
+
+  const passwordStrength = useMemo(() => {
+    if (password.length === 0) return { level: 0, label: '', color: brand.border };
+    if (password.length < 6) return { level: 1, label: 'Too short', color: brand.error };
+
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
+    if (/\d/.test(password)) score++;
+    if (/[^a-zA-Z0-9]/.test(password)) score++;
+
+    if (score <= 1) return { level: 2, label: 'Weak', color: '#F59E0B' };
+    if (score === 2) return { level: 3, label: 'Fair', color: '#EAB308' };
+    if (score === 3) return { level: 4, label: 'Good', color: '#22C55E' };
+    return { level: 5, label: 'Strong', color: brand.success };
+  }, [password]);
 
   const handleSignup = async () => {
     if (!displayName || !email || !password || !confirmPassword) {
@@ -55,18 +75,15 @@ export default function SignupScreen() {
     setLoading(true);
     setError('');
 
-    const { error } = await signUp(email, password, displayName);
+    const result = await signUp(email, password, displayName);
 
-    if (error) {
-      setError(error.message);
+    if (result.error) {
+      setError(result.error.message);
       setLoading(false);
     } else {
-      Alert.alert(
-        'Welcome!',
-        'Your account has been created. You can now start writing eulogies.',
-        [{ text: 'Get Started', onPress: () => router.replace('/(tabs)') }]
-      );
+      showToast('Welcome! Your account has been created.', 'success');
       setLoading(false);
+      router.replace('/(tabs)');
     }
   };
 
@@ -85,7 +102,7 @@ export default function SignupScreen() {
             <View style={styles.header}>
               <Text style={styles.title}>Create Account</Text>
               <Text style={styles.subtitle}>
-                Join a community that celebrates{'\n'}the living
+                Share what matters, while it matters
               </Text>
             </View>
 
@@ -104,6 +121,7 @@ export default function SignupScreen() {
                   onChangeText={setDisplayName}
                   onFocus={() => setFocusedInput('name')}
                   onBlur={() => setFocusedInput(null)}
+                  accessibilityLabel="Your name"
                 />
               </View>
 
@@ -122,6 +140,7 @@ export default function SignupScreen() {
                   onBlur={() => setFocusedInput(null)}
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  accessibilityLabel="Email address"
                 />
               </View>
 
@@ -139,28 +158,66 @@ export default function SignupScreen() {
                   onFocus={() => setFocusedInput('password')}
                   onBlur={() => setFocusedInput(null)}
                   secureTextEntry
+                  accessibilityLabel="Password"
                 />
+                {password.length > 0 && (
+                  <View style={styles.strengthContainer}>
+                    <View style={styles.strengthBars}>
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <View
+                          key={level}
+                          style={[
+                            styles.strengthBar,
+                            {
+                              backgroundColor:
+                                level <= passwordStrength.level
+                                  ? passwordStrength.color
+                                  : brand.border,
+                            },
+                          ]}
+                        />
+                      ))}
+                    </View>
+                    <Text style={[styles.strengthLabel, { color: passwordStrength.color }]}>
+                      {passwordStrength.label}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Confirm Password</Text>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Confirm Password</Text>
+                  {passwordsMatch && (
+                    <View style={styles.matchIndicator}>
+                      <Check size={14} color={brand.success} strokeWidth={3} />
+                      <Text style={styles.matchText}>Match</Text>
+                    </View>
+                  )}
+                </View>
                 <TextInput
                   style={[
                     styles.input,
                     focusedInput === 'confirm' && styles.inputFocused,
+                    passwordsMatch && styles.inputSuccess,
                   ]}
-                  placeholder="Type it again"
+                  placeholder="Confirm your password"
                   placeholderTextColor={brand.textMuted}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   onFocus={() => setFocusedInput('confirm')}
                   onBlur={() => setFocusedInput(null)}
                   secureTextEntry
+                  accessibilityLabel="Confirm password"
                 />
               </View>
 
               {error ? (
-                <View style={styles.errorContainer}>
+                <View
+                  style={styles.errorContainer}
+                  accessibilityRole="alert"
+                  accessibilityLiveRegion="polite"
+                >
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               ) : null}
@@ -170,6 +227,9 @@ export default function SignupScreen() {
                 onPress={handleSignup}
                 disabled={loading}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={loading ? 'Creating account' : 'Create account'}
+                accessibilityState={{ disabled: loading }}
               >
                 {loading ? (
                   <ActivityIndicator color="#fff" />
@@ -219,7 +279,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'PlayfairDisplay_700Bold',
     fontSize: 32,
-    color: brand.text,
+    color: brand.primary,
     marginBottom: spacing.sm,
   },
   subtitle: {
@@ -254,6 +314,43 @@ const styles = StyleSheet.create({
   },
   inputFocused: {
     borderColor: brand.primary,
+  },
+  inputSuccess: {
+    borderColor: brand.success,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  strengthContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+    gap: spacing.sm,
+  },
+  strengthBars: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  strengthBar: {
+    width: 32,
+    height: 4,
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
+  matchIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  matchText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: brand.success,
   },
   errorContainer: {
     backgroundColor: '#FEF2F2', // red-50

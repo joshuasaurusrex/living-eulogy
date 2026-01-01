@@ -10,7 +10,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="theme-color" content="#6366F1" />
         <meta name="description" content="Share what matters, while it matters. Write living eulogies for the people you love." />
@@ -28,10 +28,15 @@ export default function Root({ children }: { children: React.ReactNode }) {
 }
 
 const responsiveBackground = `
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
 body {
   background-color: #F8FAFC;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
 @media (prefers-color-scheme: dark) {
   body {
     background-color: #0F172A;

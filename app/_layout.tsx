@@ -19,6 +19,7 @@ import {
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { ToastProvider } from '@/components/ui/Toast';
 import { brand } from '@/constants/Colors';
 
 export { ErrorBoundary } from 'expo-router';
@@ -73,12 +74,14 @@ function AuthenticatedLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : LightTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="view" />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
+      <ToastProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="view/[token]" />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -14,51 +13,43 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import { X, ChevronDown, Lock, Globe, Mail, User, UserX } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import { useToast } from '@/components/ui/Toast';
 import { brand } from '@/constants/Colors';
-import { spacing, radius, shadows } from '@/constants/Theme';
+import { spacing, radius } from '@/constants/Theme';
+import { Avatar } from '@/components/ui/Avatar';
+import { getBaseUrl, validateEmail } from '@/lib/utils';
 
-type Visibility = 'private' | 'friends' | 'public';
-
-const WRITING_PROMPTS = [
-  "What's something you've never told them?",
-  "How have they changed your life?",
-  "What do you admire most about them?",
-  "What's a memory you'll always treasure?",
-];
+type Visibility = 'private' | 'public';
 
 export default function WriteScreen() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [recipientName, setRecipientName] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [content, setContent] = useState('');
   const [visibility, setVisibility] = useState<Visibility>('private');
   const [loading, setLoading] = useState(false);
-  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const [showEmailInput, setShowEmailInput] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
-  const getBaseUrl = () => {
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
-    }
-    return 'https://livingeulogy.io';
-  };
-
-  const copyToClipboard = async (text: string) => {
-    await Clipboard.setStringAsync(text);
-  };
+  const displayName = user?.user_metadata?.display_name || 'You';
+  const minChars = 50;
+  const canPost = recipientName.trim().length > 0 && content.trim().length >= minChars;
 
   const sendNotificationEmail = async (
     email: string,
     name: string,
     shareToken: string
-  ) => {
+  ): Promise<boolean> => {
     try {
       const baseUrl = getBaseUrl();
       const shareUrl = `${baseUrl}/view/${shareToken}`;
-      const senderName = user?.user_metadata?.display_name || 'Someone';
+      const senderName = isAnonymous ? 'Someone' : (user?.user_metadata?.display_name || 'Someone');
 
-      await fetch('/.netlify/functions/send-eulogy-email', {
+      const response = await fetch('/.netlify/functions/send-eulogy-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -68,22 +59,22 @@ export default function WriteScreen() {
           shareUrl,
         }),
       });
+
+      return response.ok;
     } catch (err) {
       console.error('Failed to send email:', err);
+      return false;
     }
   };
 
-  const handleSubmit = async () => {
-    if (!recipientName.trim()) {
-      Alert.alert('Missing info', 'Please enter who this eulogy is for');
-      return;
-    }
-    if (!content.trim()) {
-      Alert.alert('Missing info', 'Please write your eulogy');
-      return;
-    }
-    if (content.trim().length < 50) {
-      Alert.alert('Too short', 'Please write at least 50 characters to create a meaningful eulogy');
+  const handlePost = async () => {
+    if (!canPost) return;
+
+    const trimmedEmail = recipientEmail.trim();
+
+    // Validate email format if provided
+    if (trimmedEmail && !validateEmail(trimmedEmail)) {
+      showToast('Please enter a valid email address.', 'error');
       return;
     }
 
@@ -94,54 +85,50 @@ export default function WriteScreen() {
       .insert({
         author_id: user?.id,
         recipient_name: recipientName.trim(),
-        recipient_email: recipientEmail.trim() || null,
+        recipient_email: trimmedEmail || null,
         content: content.trim(),
         visibility,
+        is_anonymous: isAnonymous,
       })
       .select('share_token')
       .single();
 
     if (error) {
       setLoading(false);
-      Alert.alert('Error', error.message);
+      showToast('Failed to create eulogy. Please try again.', 'error');
       return;
     }
 
     // Send email notification if recipient email provided
-    if (recipientEmail.trim() && data?.share_token) {
-      await sendNotificationEmail(
-        recipientEmail.trim(),
+    let emailSent = false;
+    if (trimmedEmail && data?.share_token) {
+      emailSent = await sendNotificationEmail(
+        trimmedEmail,
         recipientName.trim(),
         data.share_token
       );
     }
 
-    setLoading(false);
-
+    // Copy share link to clipboard
     const baseUrl = getBaseUrl();
     const shareUrl = `${baseUrl}/view/${data?.share_token}`;
-
-    // Copy to clipboard
-    if (data?.share_token) {
-      await copyToClipboard(shareUrl);
+    let clipboardSuccess = false;
+    try {
+      await Clipboard.setStringAsync(shareUrl);
+      clipboardSuccess = true;
+    } catch {
+      // Clipboard failed silently
     }
 
-    if (recipientEmail && data?.share_token) {
-      Alert.alert(
-        'Sent!',
-        `Your eulogy has been sent to ${recipientName}.\n\nThe share link has been copied to your clipboard.`,
-        [
-          { text: 'View My Eulogies', onPress: () => router.push('/(tabs)/my-eulogies') },
-        ]
-      );
-    } else if (data?.share_token) {
-      Alert.alert(
-        'Saved!',
-        `Your eulogy has been saved.\n\nThe share link has been copied to your clipboard:\n${shareUrl}`,
-        [
-          { text: 'View My Eulogies', onPress: () => router.push('/(tabs)/my-eulogies') },
-        ]
-      );
+    setLoading(false);
+
+    // Show appropriate success message
+    if (!clipboardSuccess) {
+      showToast('Eulogy created! Could not copy link.', 'success');
+    } else if (trimmedEmail && !emailSent) {
+      showToast('Eulogy created! Link copied. Email failed to send.', 'success');
+    } else {
+      showToast('Eulogy created! Link copied to clipboard.', 'success');
     }
 
     // Reset form
@@ -149,356 +136,380 @@ export default function WriteScreen() {
     setRecipientEmail('');
     setContent('');
     setVisibility('private');
+    setShowEmailInput(false);
+    setIsAnonymous(false);
+
+    // Navigate to my eulogies
+    router.push('/(tabs)/my-eulogies');
   };
 
-  const VisibilityOption = ({
-    value,
-    label,
-    icon,
-    description,
-    disabled = false,
-  }: {
-    value: Visibility;
-    label: string;
-    icon: string;
-    description: string;
-    disabled?: boolean;
-  }) => (
-    <TouchableOpacity
-      style={[
-        styles.visibilityOption,
-        visibility === value && styles.visibilitySelected,
-        disabled && styles.visibilityDisabled,
-      ]}
-      onPress={() => !disabled && setVisibility(value)}
-      activeOpacity={disabled ? 1 : 0.7}
-    >
-      <Text style={[styles.visibilityIcon, disabled && styles.visibilityIconDisabled]}>{icon}</Text>
-      <Text
-        style={[
-          styles.visibilityLabel,
-          visibility === value && styles.visibilityLabelSelected,
-          disabled && styles.visibilityLabelDisabled,
-        ]}
-      >
-        {label}
-      </Text>
-      <Text style={[styles.visibilityDesc, disabled && styles.visibilityDescDisabled]}>{description}</Text>
-    </TouchableOpacity>
-  );
+  const handleClose = () => {
+    router.back();
+  };
+
+  const toggleVisibility = () => {
+    setVisibility(visibility === 'private' ? 'public' : 'private');
+  };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
+        style={styles.flex}
       >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={handleClose}
+            style={styles.closeButton}
+            accessibilityLabel="Close"
+            accessibilityRole="button"
+          >
+            <X size={24} color={brand.text} strokeWidth={2} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.postButton, !canPost && styles.postButtonDisabled]}
+            onPress={handlePost}
+            disabled={!canPost || loading}
+            accessibilityRole="button"
+            accessibilityLabel={loading ? 'Posting' : 'Post eulogy'}
+            accessibilityState={{ disabled: !canPost || loading }}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.postButtonText}>Post</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
         <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
+          style={styles.flex}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Write a Living Eulogy</Text>
-            <Text style={styles.subtitle}>
-              Share your appreciation while they can still hear it
-            </Text>
-          </View>
+          {/* Compose Area */}
+          <View style={styles.composeArea}>
+            <Avatar name={displayName} size="md" />
+            <View style={styles.composeContent}>
+              {/* Recipient Input */}
+              <View style={styles.recipientRow}>
+                <Text style={styles.toLabel}>To</Text>
+                <TextInput
+                  style={styles.recipientInput}
+                  placeholder="Who is this for?"
+                  placeholderTextColor={brand.textMuted}
+                  value={recipientName}
+                  onChangeText={setRecipientName}
+                  accessibilityLabel="Recipient name"
+                />
+              </View>
 
-          {/* Writing Prompts */}
-          <View style={styles.promptsSection}>
-            <Text style={styles.promptsTitle}>Need inspiration?</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.promptsScroll}
-            >
-              {WRITING_PROMPTS.map((prompt, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.promptChip}
-                  onPress={() => setContent(content ? `${content}\n\n${prompt}` : prompt)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.promptText}>{prompt}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Form */}
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Who is this for?</Text>
+              {/* Main Content */}
               <TextInput
-                style={[
-                  styles.input,
-                  focusedInput === 'name' && styles.inputFocused,
-                ]}
-                placeholder="Their name"
-                placeholderTextColor={brand.textMuted}
-                value={recipientName}
-                onChangeText={setRecipientName}
-                onFocus={() => setFocusedInput('name')}
-                onBlur={() => setFocusedInput(null)}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Their email (optional)</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  focusedInput === 'email' && styles.inputFocused,
-                ]}
-                placeholder="email@example.com"
-                placeholderTextColor={brand.textMuted}
-                value={recipientEmail}
-                onChangeText={setRecipientEmail}
-                onFocus={() => setFocusedInput('email')}
-                onBlur={() => setFocusedInput(null)}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-              <Text style={styles.hint}>
-                We'll notify them and send a private link
-              </Text>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Your eulogy</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.textArea,
-                  focusedInput === 'content' && styles.inputFocused,
-                ]}
-                placeholder="What do you want them to know? What impact have they had on your life? What do you appreciate about them?"
+                style={styles.contentInput}
+                placeholder="What do you want them to know?"
                 placeholderTextColor={brand.textMuted}
                 value={content}
                 onChangeText={setContent}
-                onFocus={() => setFocusedInput('content')}
-                onBlur={() => setFocusedInput(null)}
                 multiline
                 textAlignVertical="top"
+                accessibilityLabel="Eulogy content"
               />
-              <Text style={[styles.hint, content.length < 50 && content.length > 0 && styles.hintWarning]}>
-                {content.length}/50 minimum characters
-              </Text>
-            </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Visibility</Text>
-              <View style={styles.visibilityContainer}>
-                <VisibilityOption
-                  value="private"
-                  label="Private"
-                  icon="🔒"
-                  description="Only via link"
-                />
-                <VisibilityOption
-                  value="friends"
-                  label="Friends"
-                  icon="👥"
-                  description="Coming soon"
-                  disabled
-                />
-                <VisibilityOption
-                  value="public"
-                  label="Public"
-                  icon="🌍"
-                  description="Anyone can see"
-                />
+              {/* Character hint */}
+              {content.length === 0 && (
+                <Text style={styles.charHint}>Minimum 50 characters</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Writing Prompts */}
+          {content.length === 0 && (
+            <View style={styles.promptsSection}>
+              <Text style={styles.promptsLabel}>Try starting with...</Text>
+              <View style={styles.prompts}>
+                {[
+                  "What I've never told you is...",
+                  "You changed my life when...",
+                  "I admire how you...",
+                ].map((prompt, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.promptChip}
+                    onPress={() => setContent(prompt)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use prompt: ${prompt}`}
+                  >
+                    <Text style={styles.promptText}>{prompt}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
+          )}
+        </ScrollView>
 
+        {/* Bottom Bar */}
+        <View style={styles.bottomBar}>
+          <View style={styles.bottomActions}>
+            {/* Email Toggle */}
             <TouchableOpacity
-              style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-              onPress={handleSubmit}
-              disabled={loading}
-              activeOpacity={0.8}
+              style={[styles.toggleButton, showEmailInput && styles.toggleButtonActive]}
+              onPress={() => setShowEmailInput(!showEmailInput)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: showEmailInput }}
+              accessibilityLabel="Send email notification"
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
+              <Mail size={16} color={showEmailInput ? brand.primary : brand.textSecondary} strokeWidth={2} />
+              <Text style={[styles.toggleText, showEmailInput && styles.toggleTextActive]}>
+                {showEmailInput ? 'Email on' : 'Email'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Anonymous Toggle */}
+            <TouchableOpacity
+              style={styles.visibilityToggle}
+              onPress={() => setIsAnonymous(!isAnonymous)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: isAnonymous }}
+              accessibilityLabel="Post anonymously"
+            >
+              {isAnonymous ? (
+                <UserX size={16} color={brand.primary} strokeWidth={2} />
               ) : (
-                <Text style={styles.submitButtonText}>
-                  {recipientEmail ? 'Save & Send' : 'Save Eulogy'}
-                </Text>
+                <User size={16} color={brand.textSecondary} strokeWidth={2} />
               )}
+              <Text style={[styles.visibilityText, isAnonymous && styles.visibilityTextPublic]}>
+                {isAnonymous ? 'Anonymous' : 'Signed'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Visibility Toggle */}
+            <TouchableOpacity
+              style={styles.visibilityToggle}
+              onPress={toggleVisibility}
+              accessibilityRole="button"
+              accessibilityLabel={`Visibility: ${visibility === 'private' ? 'Only via link' : 'Public'}`}
+            >
+              {visibility === 'private' ? (
+                <Lock size={16} color={brand.textSecondary} strokeWidth={2} />
+              ) : (
+                <Globe size={16} color={brand.primary} strokeWidth={2} />
+              )}
+              <Text style={[styles.visibilityText, visibility === 'public' && styles.visibilityTextPublic]}>
+                {visibility === 'private' ? 'Only via link' : 'Public'}
+              </Text>
+              <ChevronDown size={14} color={brand.textMuted} strokeWidth={2} />
             </TouchableOpacity>
           </View>
-        </ScrollView>
+
+          {/* Character Count */}
+          <Text style={[styles.charCount, content.length >= minChars && styles.charCountGood]}>
+            {content.length < minChars ? `${minChars - content.length} chars left` : '✓'}
+          </Text>
+        </View>
+
+        {/* Email Input (collapsible) */}
+        {showEmailInput && (
+          <View style={styles.emailSection}>
+            <Mail size={18} color={brand.textMuted} strokeWidth={2} />
+            <TextInput
+              style={styles.emailInput}
+              placeholder="Their email (we'll send them a link)"
+              placeholderTextColor={brand.textMuted}
+              value={recipientEmail}
+              onChangeText={setRecipientEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoFocus
+              accessibilityLabel="Recipient email address"
+            />
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: brand.backgroundAlt,
-  },
   container: {
     flex: 1,
+    backgroundColor: brand.background,
   },
-  scroll: {
+  flex: {
     flex: 1,
   },
-  content: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxl,
-  },
   header: {
-    marginBottom: spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: brand.border,
   },
-  title: {
-    fontFamily: 'PlayfairDisplay_700Bold',
-    fontSize: 28,
-    color: brand.text,
-    marginBottom: spacing.xs,
+  closeButton: {
+    padding: spacing.xs,
   },
-  subtitle: {
-    fontFamily: 'Inter_400Regular',
+  postButton: {
+    backgroundColor: brand.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+  },
+  postButtonDisabled: {
+    opacity: 0.5,
+  },
+  postButtonText: {
+    fontFamily: 'Inter_600SemiBold',
+    color: '#fff',
     fontSize: 15,
-    color: brand.textSecondary,
-    lineHeight: 22,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  composeArea: {
+    flexDirection: 'row',
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  composeContent: {
+    flex: 1,
+  },
+  recipientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: brand.border,
+  },
+  toLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
+    color: brand.textMuted,
+  },
+  recipientInput: {
+    flex: 1,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    color: brand.primary,
+    padding: 0,
+  },
+  contentInput: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 17,
+    color: brand.text,
+    lineHeight: 24,
+    minHeight: 150,
+    padding: 0,
+  },
+  charHint: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: brand.textMuted,
+    marginTop: spacing.sm,
   },
   promptsSection: {
-    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingLeft: spacing.md + 40 + spacing.md, // Align with compose content
   },
-  promptsTitle: {
-    fontFamily: 'Inter_600SemiBold',
+  promptsLabel: {
+    fontFamily: 'Inter_500Medium',
     fontSize: 13,
     color: brand.textMuted,
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
-  promptsScroll: {
+  prompts: {
     gap: spacing.sm,
   },
   promptChip: {
-    backgroundColor: brand.background,
+    backgroundColor: brand.backgroundAlt,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: brand.border,
-    ...shadows.sm,
+    borderRadius: radius.md,
+    alignSelf: 'flex-start',
   },
   promptText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: brand.textSecondary,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: brand.border,
+  },
+  bottomActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: brand.backgroundAlt,
+    borderRadius: radius.full,
+  },
+  toggleButtonActive: {
+    backgroundColor: '#EEF2FF',
+  },
+  toggleText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 13,
-    color: brand.text,
+    color: brand.textSecondary,
   },
-  form: {
-    gap: spacing.md,
-  },
-  inputGroup: {
-    gap: spacing.xs,
-  },
-  label: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: brand.text,
-    marginLeft: spacing.xs,
-  },
-  input: {
-    backgroundColor: brand.background,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-    color: brand.text,
-    borderWidth: 2,
-    borderColor: brand.border,
-  },
-  inputFocused: {
-    borderColor: brand.primary,
-  },
-  textArea: {
-    height: 180,
-    paddingTop: spacing.md,
-  },
-  hint: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: brand.textMuted,
-    marginLeft: spacing.xs,
-  },
-  hintWarning: {
-    color: brand.warning,
-  },
-  visibilityContainer: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  visibilityOption: {
-    flex: 1,
-    backgroundColor: brand.background,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 2,
-    borderColor: brand.border,
-    alignItems: 'center',
-    ...shadows.sm,
-  },
-  visibilitySelected: {
-    borderColor: brand.primary,
-    backgroundColor: '#EEF2FF', // indigo-50
-  },
-  visibilityIcon: {
-    fontSize: 20,
-    marginBottom: spacing.xs,
-  },
-  visibilityLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: brand.text,
-  },
-  visibilityLabelSelected: {
+  toggleTextActive: {
     color: brand.primary,
   },
-  visibilityDesc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 11,
-    color: brand.textMuted,
-    marginTop: 2,
-    textAlign: 'center',
+  visibilityToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: brand.backgroundAlt,
+    borderRadius: radius.full,
   },
-  visibilityDisabled: {
-    opacity: 0.5,
+  visibilityText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: brand.textSecondary,
+  },
+  visibilityTextPublic: {
+    color: brand.primary,
+  },
+  charCount: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: brand.textMuted,
+  },
+  charCountGood: {
+    color: brand.success,
+  },
+  emailSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: brand.border,
     backgroundColor: brand.backgroundAlt,
   },
-  visibilityIconDisabled: {
-    opacity: 0.6,
-  },
-  visibilityLabelDisabled: {
-    color: brand.textMuted,
-  },
-  visibilityDescDisabled: {
-    fontStyle: 'italic',
-  },
-  submitButton: {
-    backgroundColor: brand.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md + 4,
-    alignItems: 'center',
-    marginTop: spacing.lg,
-    shadowColor: brand.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  submitButtonDisabled: {
-    opacity: 0.7,
-  },
-  submitButtonText: {
-    fontFamily: 'Inter_700Bold',
-    color: '#fff',
-    fontSize: 18,
+  emailInput: {
+    flex: 1,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    color: brand.text,
+    padding: 0,
   },
 });

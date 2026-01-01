@@ -5,73 +5,117 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  Dimensions,
   Platform,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { TouchableOpacity } from 'react-native';
+import { Heart, Send, Users } from 'lucide-react-native';
 import { brand } from '@/constants/Colors';
 import { spacing, radius, shadows } from '@/constants/Theme';
+
+const { width } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.content}>
-        {/* Hero Section */}
-        <View style={styles.hero}>
+        {/* Logo & Brand */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Heart size={32} color="#fff" fill="#fff" strokeWidth={0} />
+          </View>
           <Text style={styles.brandName}>Living Eulogy</Text>
-          <View style={styles.divider} />
-          <Text style={styles.tagline}>
-            Tell them what they mean to you{'\n'}
-            <Text style={styles.taglineEmphasis}>while they can still hear it</Text>
+        </View>
+
+        {/* Hero */}
+        <View style={styles.hero}>
+          <Text style={styles.heroTitle}>
+            Tell people what they mean to you
+          </Text>
+          <Text style={styles.heroSubtitle}>
+            before it's too late
           </Text>
         </View>
 
-        {/* Value Props */}
-        <View style={styles.valueProps}>
-          <View style={styles.valueItem}>
-            <Text style={styles.valueIcon}>💝</Text>
-            <Text style={styles.valueText}>
-              Write what you'd say at their funeral—but let them read it now
+        {/* Preview Cards */}
+        <View style={styles.previewSection}>
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeader}>
+              <View style={[styles.previewAvatar, { backgroundColor: '#8B5CF6' }]}>
+                <Text style={styles.previewAvatarText}>S</Text>
+              </View>
+              <View>
+                <Text style={styles.previewAuthor}>Sarah</Text>
+                <Text style={styles.previewMeta}>wrote to Mom</Text>
+              </View>
+            </View>
+            <Text style={styles.previewContent} numberOfLines={2}>
+              "You taught me that love isn't just a feeling—it's showing up, every single day..."
             </Text>
           </View>
-          <View style={styles.valueItem}>
-            <Text style={styles.valueIcon}>✉️</Text>
-            <Text style={styles.valueText}>
-              Share privately via email—no account needed for them to read
-            </Text>
-          </View>
-          <View style={styles.valueItem}>
-            <Text style={styles.valueIcon}>🔐</Text>
-            <Text style={styles.valueText}>
-              Keep it private, share with friends, or make it public
+
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeader}>
+              <View style={[styles.previewAvatar, { backgroundColor: '#EC4899' }]}>
+                <Text style={styles.previewAvatarText}>M</Text>
+              </View>
+              <View>
+                <Text style={styles.previewAuthor}>Marcus</Text>
+                <Text style={styles.previewMeta}>wrote to Dad</Text>
+              </View>
+            </View>
+            <Text style={styles.previewContent} numberOfLines={2}>
+              "I never said it enough, but you're the reason I became who I am..."
             </Text>
           </View>
         </View>
 
-        {/* CTA Buttons */}
+        {/* Features */}
+        <View style={styles.features}>
+          <View style={styles.feature}>
+            <Send size={18} color={brand.primary} strokeWidth={2} />
+            <Text style={styles.featureText}>Private or public—you choose</Text>
+          </View>
+          <View style={styles.feature}>
+            <Users size={18} color={brand.primary} strokeWidth={2} />
+            <Text style={styles.featureText}>No signup to read</Text>
+          </View>
+        </View>
+
+        {/* CTAs */}
         <View style={styles.actions}>
           <Link href="/(auth)/signup" asChild>
-            <TouchableOpacity style={styles.primaryButton} activeOpacity={0.8}>
-              <Text style={styles.primaryButtonText}>Get Started</Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel="Start Writing"
+            >
+              <Text style={styles.primaryButtonText}>Start Writing</Text>
             </TouchableOpacity>
           </Link>
 
           <Link href="/(auth)/login" asChild>
-            <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.8}>
-              <Text style={styles.secondaryButtonText}>I already have an account</Text>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Sign In"
+            >
+              <Text style={styles.secondaryButtonText}>Sign In</Text>
             </TouchableOpacity>
           </Link>
         </View>
 
-        {/* Footer */}
-        <Text style={styles.footer}>
-          Don't wait until it's too late.
+        {/* Privacy Note */}
+        <Text style={styles.privacyNote}>
+          Your messages stay private until you choose to share
         </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -80,107 +124,147 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: brand.backgroundAlt,
+    backgroundColor: brand.background,
   },
-  scrollContent: {
-    flexGrow: 1,
+  scrollView: {
+    flex: 1,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: Platform.OS === 'web' ? 80 : spacing.xl,
+    paddingTop: Platform.OS === 'web' ? spacing.xl : spacing.lg,
+    paddingBottom: spacing.xl,
     justifyContent: 'space-between',
     minHeight: '100%',
   },
-  hero: {
+  header: {
     alignItems: 'center',
-    marginTop: spacing.xxl,
+    gap: spacing.md,
+  },
+  logoContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: brand.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   brandName: {
-    fontFamily: 'PlayfairDisplay_700Bold',
-    fontSize: 42,
-    color: brand.primary,
-    textAlign: 'center',
-  },
-  divider: {
-    width: 60,
-    height: 3,
-    backgroundColor: brand.primary,
-    marginVertical: spacing.lg,
-    borderRadius: radius.full,
-  },
-  tagline: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 20,
-    color: brand.textSecondary,
-    textAlign: 'center',
-    lineHeight: 30,
-  },
-  taglineEmphasis: {
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold',
+    fontSize: 24,
     color: brand.text,
+    letterSpacing: -0.5,
   },
-  valueProps: {
-    gap: spacing.lg,
-    paddingVertical: spacing.xl,
+  hero: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
   },
-  valueItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    backgroundColor: brand.background,
+  heroTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 28,
+    color: brand.text,
+    textAlign: 'center',
+    lineHeight: 36,
+    letterSpacing: -0.5,
+  },
+  heroSubtitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 32,
+    color: brand.accent,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+    marginTop: spacing.xs,
+  },
+  previewSection: {
+    paddingVertical: spacing.md,
+  },
+  previewCard: {
+    backgroundColor: brand.backgroundAlt,
+    borderRadius: radius.lg,
     padding: spacing.md,
-    borderRadius: radius.md,
+    marginBottom: spacing.sm,
     ...shadows.sm,
   },
-  valueIcon: {
-    fontSize: 24,
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  valueText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 15,
+  previewAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewAvatarText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: '#fff',
+  },
+  previewAuthor: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
     color: brand.text,
-    lineHeight: 22,
-    flex: 1,
+  },
+  previewMeta: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: brand.textMuted,
+  },
+  previewContent: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: brand.textSecondary,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  features: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  feature: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  featureText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: brand.textSecondary,
   },
   actions: {
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   primaryButton: {
-    backgroundColor: brand.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md + 4,
+    backgroundColor: brand.primaryDark,
+    borderRadius: radius.full,
+    paddingVertical: spacing.md,
     alignItems: 'center',
-    shadowColor: brand.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
   primaryButtonText: {
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Inter_600SemiBold',
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
   },
   secondaryButton: {
     backgroundColor: 'transparent',
-    borderRadius: radius.md,
-    borderWidth: 2,
-    borderColor: brand.accent,
-    paddingVertical: spacing.md + 2,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    fontFamily: 'Inter_600SemiBold',
-    color: brand.accent,
-    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+    color: brand.textSecondary,
+    fontSize: 15,
+    textDecorationLine: 'underline',
   },
-  footer: {
-    fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 14,
+  privacyNote: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
     color: brand.textMuted,
     textAlign: 'center',
-    fontStyle: 'italic',
   },
 });

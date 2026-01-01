@@ -32,10 +32,10 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
 
-    const { error } = await signIn(email, password);
+    const result = await signIn(email, password);
 
-    if (error) {
-      setError(error.message);
+    if (result.error) {
+      setError(result.error.message);
       setLoading(false);
     } else {
       router.replace('/(tabs)');
@@ -75,11 +75,19 @@ export default function LoginScreen() {
                 onBlur={() => setFocusedInput(null)}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                accessibilityLabel="Email address"
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Password</Text>
+                <Link href="/(auth)/forgot-password" asChild>
+                  <TouchableOpacity>
+                    <Text style={styles.forgotLink}>Forgot password?</Text>
+                  </TouchableOpacity>
+                </Link>
+              </View>
               <TextInput
                 style={[
                   styles.input,
@@ -93,6 +101,7 @@ export default function LoginScreen() {
                 onFocus={() => setFocusedInput('password')}
                 onBlur={() => setFocusedInput(null)}
                 secureTextEntry
+                accessibilityLabel="Password"
               />
             </View>
 
@@ -107,6 +116,9 @@ export default function LoginScreen() {
               onPress={handleLogin}
               disabled={loading}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={loading ? 'Signing in' : 'Sign in'}
+              accessibilityState={{ disabled: loading }}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
@@ -172,6 +184,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: brand.text,
     marginLeft: spacing.xs,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  forgotLink: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+    color: brand.primary,
   },
   input: {
     backgroundColor: brand.background,

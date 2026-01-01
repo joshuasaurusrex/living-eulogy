@@ -12,6 +12,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { brand } from '@/constants/Colors';
 import { spacing, radius, shadows } from '@/constants/Theme';
+import { formatDate } from '@/lib/utils';
 
 const { width } = Dimensions.get('window');
 
@@ -20,6 +21,7 @@ type Eulogy = {
   recipient_name: string;
   content: string;
   created_at: string;
+  is_anonymous: boolean;
   profiles: {
     display_name: string;
   } | null;
@@ -32,36 +34,47 @@ export default function ViewEulogyScreen() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchEulogy = async () => {
       if (!token) {
-        setError('Invalid link');
-        setLoading(false);
+        if (isMounted) {
+          setError('Invalid link');
+          setLoading(false);
+        }
         return;
       }
 
-      const { data, error } = await supabase
+      const result = await supabase
         .from('eulogies')
         .select(`
           id,
           recipient_name,
           content,
           created_at,
-          profiles (
+          is_anonymous,
+          profiles:author_id (
             display_name
           )
         `)
         .eq('share_token', token)
         .single();
 
-      if (error || !data) {
+      if (!isMounted) return;
+
+      if (result.error || !result.data) {
         setError('Eulogy not found or link has expired');
       } else {
-        setEulogy(data as unknown as Eulogy);
+        setEulogy(result.data as unknown as Eulogy);
       }
       setLoading(false);
     };
 
     fetchEulogy();
+
+    return () => {
+      isMounted = false;
+    };
   }, [token]);
 
   if (loading) {
@@ -86,14 +99,6 @@ export default function ViewEulogyScreen() {
   if (!eulogy) {
     return null;
   }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -125,9 +130,9 @@ export default function ViewEulogyScreen() {
         <View style={styles.authorSection}>
           <Text style={styles.authorLabel}>With love,</Text>
           <Text style={styles.authorName}>
-            {eulogy.profiles?.display_name || 'Someone who cares about you'}
+            {eulogy.is_anonymous ? 'Someone who cares about you' : (eulogy.profiles?.display_name || 'Someone who cares about you')}
           </Text>
-          <Text style={styles.date}>{formatDate(eulogy.created_at)}</Text>
+          <Text style={styles.date}>{formatDate(eulogy.created_at, 'long')}</Text>
         </View>
 
         {/* Branding Footer */}
